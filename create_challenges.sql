@@ -1,7 +1,7 @@
 -- Create the challenges table
 CREATE TABLE public.challenges (
   id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
-  author_id uuid REFERENCES auth.users NOT NULL,
+  author_id uuid REFERENCES public.profiles(id) NOT NULL,
   title text NOT NULL,
   language text NOT NULL,
   difficulty text NOT NULL,

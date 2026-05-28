@@ -2,7 +2,7 @@
 CREATE TABLE public.reviews (
   id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
   challenge_id uuid REFERENCES public.challenges ON DELETE CASCADE NOT NULL,
-  reviewer_id uuid REFERENCES auth.users NOT NULL,
+  reviewer_id uuid REFERENCES public.profiles(id) NOT NULL,
   text text NOT NULL,
   category text NOT NULL,
   created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL
