@@ -1,11 +1,13 @@
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { Terminal, Trophy, User, Code2 } from 'lucide-react';
+import { Terminal, Trophy, User, Code2, Sun, Moon } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
 import '../index.css';
 
 export default function Layout() {
   const location = useLocation();
   const { user } = useAuth();
+  const { theme, toggleTheme } = useTheme();
 
   const isActive = (path) => location.pathname === path;
 
@@ -54,6 +56,10 @@ export default function Layout() {
               <Trophy size={16} /> Leaderboard
             </button>
           </Link>
+
+          <button onClick={toggleTheme} className="glass-button" style={{ padding: '0.5rem' }} title="Toggle Theme">
+            {theme === 'dark' ? <Sun size={18} color="var(--warning)" /> : <Moon size={18} color="var(--primary)" />}
+          </button>
 
           <div style={{ width: '1px', background: 'var(--border-color)', margin: '0 0.5rem' }} />
 

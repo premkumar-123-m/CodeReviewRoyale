@@ -164,3 +164,14 @@ body::after {
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.3);
 }
+
+/* Light Theme Override */
+.light-theme {
+  --bg-dark: #f8fafc;
+  --bg-panel: rgba(255, 255, 255, 0.7);
+  --bg-panel-hover: rgba(255, 255, 255, 0.9);
+  --text-main: #0f1115;
+  --text-muted: #475569;
+  --border-color: rgba(0, 0, 0, 0.1);
+  --primary-glow: rgba(99, 102, 241, 0.2);
+}

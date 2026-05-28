@@ -8,14 +8,16 @@ import Register from './pages/Register';
 import Login from './pages/Login';
 import Profile from './pages/Profile';
 import { AuthProvider } from './contexts/AuthContext';
+import { ThemeProvider } from './contexts/ThemeContext';
 import './index.css';
 
 function App() {
   return (
     <AuthProvider>
-      <Router>
-        <Routes>
-          <Route path="/" element={<Layout />}>
+      <ThemeProvider>
+        <Router>
+          <Routes>
+            <Route path="/" element={<Layout />}>
             <Route index element={<Dashboard />} />
             <Route path="review/:id" element={<ReviewRoom />} />
             <Route path="leaderboard" element={<Leaderboard />} />
@@ -26,6 +28,7 @@ function App() {
           </Route>
         </Routes>
       </Router>
+      </ThemeProvider>
     </AuthProvider>
   );
 }
