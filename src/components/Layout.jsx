@@ -1,9 +1,11 @@
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { Terminal, Trophy, User, Code2 } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
 import '../index.css';
 
 export default function Layout() {
   const location = useLocation();
+  const { user } = useAuth();
 
   const isActive = (path) => location.pathname === path;
 
@@ -55,16 +57,26 @@ export default function Layout() {
 
           <div style={{ width: '1px', background: 'var(--border-color)', margin: '0 0.5rem' }} />
 
-          <Link to="/profile">
-            <button className={`glass-button ${isActive('/profile') ? 'primary' : ''}`}>
-              <User size={16} /> My Profile
-            </button>
-          </Link>
-          <Link to="/register">
-            <button className={`glass-button ${isActive('/register') ? 'primary' : ''}`}>
-              Register
-            </button>
-          </Link>
+          {user ? (
+            <Link to="/profile">
+              <button className={`glass-button ${isActive('/profile') ? 'primary' : ''}`}>
+                <User size={16} /> My Profile
+              </button>
+            </Link>
+          ) : (
+            <>
+              <Link to="/login">
+                <button className={`glass-button ${isActive('/login') ? 'primary' : ''}`}>
+                  Log In
+                </button>
+              </Link>
+              <Link to="/register">
+                <button className={`glass-button ${isActive('/register') ? 'primary' : ''}`}>
+                  Register
+                </button>
+              </Link>
+            </>
+          )}
         </div>
       </nav>
 

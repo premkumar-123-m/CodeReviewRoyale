@@ -5,23 +5,28 @@ import ReviewRoom from './pages/ReviewRoom';
 import Leaderboard from './pages/Leaderboard';
 import SubmitChallenge from './pages/SubmitChallenge';
 import Register from './pages/Register';
+import Login from './pages/Login';
 import Profile from './pages/Profile';
+import { AuthProvider } from './contexts/AuthContext';
 import './index.css';
 
 function App() {
   return (
-    <Router>
-      <Routes>
-        <Route path="/" element={<Layout />}>
-          <Route index element={<Dashboard />} />
-          <Route path="review/:id" element={<ReviewRoom />} />
-          <Route path="leaderboard" element={<Leaderboard />} />
-          <Route path="submit" element={<SubmitChallenge />} />
-          <Route path="register" element={<Register />} />
-          <Route path="profile" element={<Profile />} />
-        </Route>
-      </Routes>
-    </Router>
+    <AuthProvider>
+      <Router>
+        <Routes>
+          <Route path="/" element={<Layout />}>
+            <Route index element={<Dashboard />} />
+            <Route path="review/:id" element={<ReviewRoom />} />
+            <Route path="leaderboard" element={<Leaderboard />} />
+            <Route path="submit" element={<SubmitChallenge />} />
+            <Route path="register" element={<Register />} />
+            <Route path="login" element={<Login />} />
+            <Route path="profile" element={<Profile />} />
+          </Route>
+        </Routes>
+      </Router>
+    </AuthProvider>
   );
 }
 

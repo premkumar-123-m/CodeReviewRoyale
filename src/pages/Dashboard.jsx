@@ -1,53 +1,51 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Code2, Clock, Users, ArrowRight, Zap } from 'lucide-react';
-
-const MOCK_CHALLENGES = [
-    {
-        id: 'c1',
-        title: 'Optimize React Re-renders',
-        language: 'React',
-        author: 'Sarah Dev',
-        difficulty: 'Medium',
-        points: 150,
-        activeReviewers: 3,
-        timeLeft: '2h 15m',
-        tags: ['Performance', 'Hooks'],
-        codePreview: 'const MemoizedComponent = useMemo(() => { ... })'
-    },
-    {
-        id: 'c2',
-        title: 'Fix Memory Leak in WebSocket Client',
-        language: 'JavaScript',
-        author: 'Alex JS',
-        difficulty: 'Hard',
-        points: 300,
-        activeReviewers: 5,
-        timeLeft: '45m',
-        tags: ['Bug', 'WebSockets', 'Memory'],
-        codePreview: 'socket.on("message", handleMessage)'
-    },
-    {
-        id: 'c3',
-        title: 'Refactor Authentication Flow',
-        language: 'Python',
-        author: 'BackendBob',
-        difficulty: 'Easy',
-        points: 50,
-        activeReviewers: 1,
-        timeLeft: '5h 30m',
-        tags: ['Refactor', 'Security'],
-        codePreview: 'def login(request):\n    user = auth(request.data)'
-    }
-];
+import { supabase } from '../lib/supabase';
 
 export default function Dashboard() {
     const [filter, setFilter] = useState('All');
+    const [challenges, setChallenges] = useState([]);
+    const [loading, setLoading] = useState(true);
     const languages = ['All', 'React', 'JavaScript', 'Python', 'Java', 'HTML'];
 
+    useEffect(() => {
+        async function fetchChallenges() {
+            try {
+                const { data, error } = await supabase
+                    .from('challenges')
+                    .select('*, profiles(username)')
+                    .order('created_at', { ascending: false });
+
+                if (error) {
+                    console.error('Error fetching challenges:', error);
+                } else if (data) {
+                    const formatted = data.map(c => ({
+                        id: c.id,
+                        title: c.title,
+                        language: c.language,
+                        author: c.profiles?.username || 'Unknown User',
+                        difficulty: c.difficulty,
+                        points: c.points,
+                        activeReviewers: c.active_reviewers,
+                        timeLeft: c.time_left,
+                        tags: c.tags || [],
+                        codePreview: c.code_preview
+                    }));
+                    setChallenges(formatted);
+                }
+            } catch (err) {
+                console.error('Unexpected error:', err);
+            } finally {
+                setLoading(false);
+            }
+        }
+        fetchChallenges();
+    }, []);
+
     const filteredChallenges = filter === 'All'
-        ? MOCK_CHALLENGES
-        : MOCK_CHALLENGES.filter(c => c.language === filter);
+        ? challenges
+        : challenges.filter(c => c.language === filter);
 
     return (
         <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
@@ -98,7 +96,11 @@ export default function Dashboard() {
                 gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))',
                 gap: '1.5rem'
             }}>
-                {filteredChallenges.map(challenge => (
+                {loading ? (
+                    <div style={{ color: 'var(--text-muted)' }}>Loading challenges...</div>
+                ) : filteredChallenges.length === 0 ? (
+                    <div style={{ color: 'var(--text-muted)' }}>No challenges found.</div>
+                ) : filteredChallenges.map(challenge => (
                     <div key={challenge.id} className="glass-panel" style={{
                         padding: '1.5rem',
                         display: 'flex',

@@ -1,25 +1,79 @@
-import { useState } from 'react';
-import { User, Trophy, Star, History, Code2, Award, Zap, ChevronRight } from 'lucide-react';
-import { Link } from 'react-router-dom';
-
-const MOCK_PROFILE = {
-    username: 'CodeNinja_99',
-    joinDate: 'Joined March 2024',
-    totalPoints: 8450,
-    rank: 'Senior Reviewer',
-    topLanguage: 'React',
-    reviewsCompleted: 142,
-    bugsFound: 38,
-    optimizationsSuggested: 65,
-    recentActivity: [
-        { id: 1, action: 'Found Bug', challenge: 'Optimize React Re-renders', points: '+50', time: '2 hours ago', type: 'bug' },
-        { id: 2, action: 'Suggested Optimization', challenge: 'Fix Memory Leak in WebSocket Client', points: '+30', time: '1 day ago', type: 'optimization' },
-        { id: 3, action: 'Completed Review', challenge: 'Refactor Authentication Flow', points: '+150', time: '3 days ago', type: 'review' }
-    ]
-};
+import { useState, useEffect } from 'react';
+import { User as UserIcon, Trophy, Star, History, Code2, Award, Zap, ChevronRight, LogOut } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../lib/supabase';
 
 export default function Profile() {
+    const navigate = useNavigate();
+    const { user, signOut } = useAuth();
+    const [profileData, setProfileData] = useState(null);
+    const [recentActivity, setRecentActivity] = useState([]);
+    const [loadingProfile, setLoadingProfile] = useState(true);
+
+    useEffect(() => {
+        async function getProfile() {
+            if (!user) return;
+            try {
+                const { data, error } = await supabase
+                    .from('profiles')
+                    .select('*')
+                    .eq('id', user.id)
+                    .single();
+                
+                if (error) {
+                    console.error('Error fetching profile:', error);
+                } else if (data) {
+                    const joinDate = new Date(user.created_at || Date.now()).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+                    setProfileData({
+                        username: data.username || user?.user_metadata?.username || user?.email,
+                        joinDate: `Joined ${joinDate}`,
+                        totalPoints: data.total_points || 0,
+                        rank: data.rank || 'Novice Reviewer',
+                        topLanguage: data.top_language || 'N/A',
+                        reviewsCompleted: data.reviews_completed || 0,
+                        bugsFound: data.bugs_found || 0,
+                        optimizationsSuggested: data.optimizations_suggested || 0,
+                        skills: data.skills || []
+                    });
+                }
+                
+                // Fetch user's accepted reviews for Activity History
+                const { data: activityData } = await supabase
+                    .from('reviews')
+                    .select('*, challenges(title, points)')
+                    .eq('reviewer_id', user.id)
+                    .eq('is_accepted', true)
+                    .order('created_at', { ascending: false })
+                    .limit(5);
+
+                if (activityData) {
+                    const formattedActivity = activityData.map(r => ({
+                        id: r.id,
+                        action: r.category === 'bug' ? 'Found Bug' : r.category === 'optimization' ? 'Suggested Optimization' : 'Improved Code',
+                        challenge: r.challenges?.title || 'Unknown Challenge',
+                        points: `+${r.challenges?.points || 0}`,
+                        time: new Date(r.created_at).toLocaleDateString(),
+                        type: r.category
+                    }));
+                    setRecentActivity(formattedActivity);
+                }
+
+            } catch (err) {
+                console.error('Unexpected error fetching profile', err);
+            } finally {
+                setLoadingProfile(false);
+            }
+        }
+        
+        getProfile();
+    }, [user]);
     const [activeTab, setActiveTab] = useState('overview');
+
+    const handleLogOut = async () => {
+        await signOut();
+        navigate('/login');
+    };
 
     return (
         <div className="animate-fade-in" style={{ maxWidth: '1000px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '2rem' }}>
@@ -54,7 +108,7 @@ export default function Profile() {
                         borderRadius: '50%',
                         border: '2px solid rgba(255,255,255,0.1)'
                     }}>
-                        <User size={60} color="var(--primary)" />
+                        <UserIcon size={60} color="var(--primary)" />
                     </div>
                     <div className="flex-center" style={{
                         position: 'absolute',
@@ -71,10 +125,17 @@ export default function Profile() {
 
                 {/* User Info */}
                 <div style={{ zIndex: 1, flex: 1 }}>
-                    <h2 style={{ fontSize: '2.5rem', marginBottom: '0.25rem', letterSpacing: '-0.02em' }}>{MOCK_PROFILE.username}</h2>
-                    <p style={{ color: 'var(--text-muted)', fontSize: '1.1rem', marginBottom: '1rem' }}>
-                        {MOCK_PROFILE.rank} • {MOCK_PROFILE.joinDate}
-                    </p>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                        <div>
+                            <h2 style={{ fontSize: '2.5rem', marginBottom: '0.25rem', letterSpacing: '-0.02em' }}>{profileData?.username || user?.user_metadata?.username || user?.email || 'Loading...'}</h2>
+                            <p style={{ color: 'var(--text-muted)', fontSize: '1.1rem', marginBottom: '1rem' }}>
+                                {profileData?.rank || '...'} • {profileData?.joinDate || '...'}
+                            </p>
+                        </div>
+                        <button onClick={handleLogOut} className="glass-button" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', borderColor: 'rgba(239, 68, 68, 0.5)', color: 'var(--danger)' }}>
+                            <LogOut size={16} /> Log Out
+                        </button>
+                    </div>
                     <div style={{ display: 'flex', gap: '1rem' }}>
                         <div style={{
                             background: 'rgba(16, 185, 129, 0.1)',
@@ -87,7 +148,7 @@ export default function Profile() {
                             alignItems: 'center',
                             gap: '0.5rem'
                         }}>
-                            <Star size={16} /> {MOCK_PROFILE.totalPoints.toLocaleString()} Points
+                            <Star size={16} /> {profileData ? profileData.totalPoints.toLocaleString() : '0'} Points
                         </div>
                         <div style={{
                             background: 'rgba(255, 255, 255, 0.05)',
@@ -97,7 +158,7 @@ export default function Profile() {
                             borderRadius: 'var(--radius-full)',
                             fontSize: '0.9rem'
                         }}>
-                            Top Language: <span style={{ color: 'var(--primary)', fontWeight: 600 }}>{MOCK_PROFILE.topLanguage}</span>
+                            Top Language: <span style={{ color: 'var(--primary)', fontWeight: 600 }}>{profileData?.topLanguage || '...'}</span>
                         </div>
                     </div>
                 </div>
@@ -110,7 +171,7 @@ export default function Profile() {
                         <Code2 size={24} />
                     </div>
                     <div>
-                        <div style={{ fontSize: '1.5rem', fontWeight: 700 }}>{MOCK_PROFILE.reviewsCompleted}</div>
+                        <div style={{ fontSize: '1.5rem', fontWeight: 700 }}>{profileData?.reviewsCompleted || 0}</div>
                         <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Reviews Completed</div>
                     </div>
                 </div>
@@ -120,7 +181,7 @@ export default function Profile() {
                         <Zap size={24} />
                     </div>
                     <div>
-                        <div style={{ fontSize: '1.5rem', fontWeight: 700 }}>{MOCK_PROFILE.bugsFound}</div>
+                        <div style={{ fontSize: '1.5rem', fontWeight: 700 }}>{profileData?.bugsFound || 0}</div>
                         <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Bugs Squashed</div>
                     </div>
                 </div>
@@ -130,11 +191,33 @@ export default function Profile() {
                         <Trophy size={24} />
                     </div>
                     <div>
-                        <div style={{ fontSize: '1.5rem', fontWeight: 700 }}>{MOCK_PROFILE.optimizationsSuggested}</div>
+                        <div style={{ fontSize: '1.5rem', fontWeight: 700 }}>{profileData?.optimizationsSuggested || 0}</div>
                         <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Optimizations</div>
                     </div>
                 </div>
             </div>
+
+            {/* Skills Section */}
+            {profileData?.skills && profileData.skills.length > 0 && (
+                <div className="glass-panel" style={{ padding: '1.5rem' }}>
+                    <h3 style={{ fontSize: '1.25rem', marginBottom: '1rem' }}>Skills</h3>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                        {profileData.skills.map((skill, index) => (
+                            <div key={index} style={{
+                                padding: '0.4rem 1rem',
+                                background: 'rgba(99, 102, 241, 0.15)',
+                                color: 'var(--primary)',
+                                borderRadius: 'var(--radius-full)',
+                                fontSize: '0.875rem',
+                                border: '1px solid rgba(99, 102, 241, 0.3)',
+                                fontWeight: 500
+                            }}>
+                                {skill}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             {/* Tabs & Content */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
@@ -155,10 +238,14 @@ export default function Profile() {
 
                 {activeTab === 'overview' && (
                     <div className="glass-panel" style={{ padding: '0' }}>
-                        {MOCK_PROFILE.recentActivity.map((activity, index) => (
+                        {recentActivity.length === 0 ? (
+                            <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                                No accepted reviews yet. Start reviewing challenges to earn points!
+                            </div>
+                        ) : recentActivity.map((activity, index) => (
                             <div key={activity.id} style={{
                                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                                padding: '1.5rem', borderBottom: index !== MOCK_PROFILE.recentActivity.length - 1 ? '1px solid var(--border-color)' : 'none',
+                                padding: '1.5rem', borderBottom: index !== recentActivity.length - 1 ? '1px solid var(--border-color)' : 'none',
                                 transition: 'background 0.2s ease'
                             }}
                                 onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-panel-hover)'}

@@ -2,86 +2,137 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Send, Sparkles, MessageSquare, AlertTriangle, CheckCircle, ArrowLeft } from 'lucide-react';
 import CodeBlock from '../components/CodeBlock';
-
-const SAMPLE_CODE = `
-import React, { useState, useEffect } from 'react';
-
-// A component that fetches user data
-function UserProfile({ userId }) {
-  const [user, setUser] = useState(null);
-  
-  // Bug 1: Missing dependency in useEffect
-  useEffect(() => {
-    fetch(\`/api/users/\${userId}\`)
-      .then(res => res.json())
-      .then(data => setUser(data));
-  }, []); // <--- array should include userId
-
-  // Optimization 1: Inline functions causing unnecessary re-renders in children
-  const handleSave = () => {
-    console.log("Saving user:", user);
-  };
-
-  if (!user) return <div>Loading...</div>;
-
-  return (
-    <div className="profile">
-      <h1>{user.name}</h1>
-      <p>{user.email}</p>
-      
-      {/* Readability: Can use a cleaner button component */}
-      <button onClick={handleSave} style={{ marginTop: 10, padding: 5 }}>
-        Save Profile
-      </button>
-    </div>
-  );
-}`;
-
-const INITIAL_EVENTS = [
-  { id: 1, type: 'join', user: 'Alex JS', time: '1m ago' },
-  { id: 2, type: 'comment', user: 'Alex JS', text: 'I think there might be a dependency array issue here.', category: 'bug', time: '30s ago' },
-];
+import { supabase } from '../lib/supabase';
+import { useAuth } from '../contexts/AuthContext';
 
 export default function ReviewRoom() {
   const { id } = useParams();
-  const [events, setEvents] = useState(INITIAL_EVENTS);
+  const { user } = useAuth();
+  const [challenge, setChallenge] = useState(null);
+  const [events, setEvents] = useState([]);
   const [comment, setComment] = useState('');
   const [category, setCategory] = useState('bug');
   const [showAiHint, setShowAiHint] = useState(false);
   const feedEndRef = useRef(null);
 
+  // Fetch challenge and initial reviews
+  useEffect(() => {
+    async function fetchData() {
+      // Fetch challenge
+      const { data: challengeData } = await supabase
+        .from('challenges')
+        .select('*, profiles(username)')
+        .eq('id', id)
+        .single();
+      
+      if (challengeData) setChallenge(challengeData);
+
+      // Fetch reviews
+      const { data: reviewsData } = await supabase
+        .from('reviews')
+        .select('*, profiles(username)')
+        .eq('challenge_id', id)
+        .order('created_at', { ascending: true });
+
+      if (reviewsData) {
+        const formattedEvents = reviewsData.map(r => ({
+          id: r.id,
+          type: 'comment',
+          user: r.profiles?.username || 'Unknown',
+          text: r.text,
+          category: r.category,
+          time: new Date(r.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          isCurrentUser: user ? r.reviewer_id === user.id : false,
+          isAccepted: r.is_accepted
+        }));
+        setEvents(formattedEvents);
+      }
+    }
+    
+    if (id) fetchData();
+  }, [id, user]);
+
+  // Set up real-time subscription for new reviews
+  useEffect(() => {
+    if (!id) return;
+    
+    const channel = supabase
+      .channel(`room_${id}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'reviews',
+        filter: `challenge_id=eq.${id}`
+      }, async (payload) => {
+        if (payload.eventType === 'INSERT') {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('username')
+            .eq('id', payload.new.reviewer_id)
+            .single();
+            
+          const newEvent = {
+            id: payload.new.id,
+            type: 'comment',
+            user: profile?.username || 'Unknown',
+            text: payload.new.text,
+            category: payload.new.category,
+            time: new Date(payload.new.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            isCurrentUser: user ? payload.new.reviewer_id === user.id : false,
+            isAccepted: payload.new.is_accepted
+          };
+          
+          setEvents(prev => [...prev, newEvent]);
+        } else if (payload.eventType === 'UPDATE') {
+          setEvents(prev => prev.map(event => 
+            event.id === payload.new.id ? { ...event, isAccepted: payload.new.is_accepted } : event
+          ));
+        }
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [id, user]);
+
+  const handleAcceptReview = async (reviewId) => {
+    try {
+      const { error } = await supabase
+        .from('reviews')
+        .update({ is_accepted: true })
+        .eq('id', reviewId);
+      if (error) throw error;
+    } catch (err) {
+      console.error("Error accepting review:", err);
+      alert("Failed to accept review.");
+    }
+  };
+
   useEffect(() => {
     feedEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [events]);
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setEvents(prev => [...prev, {
-        id: Date.now(),
-        type: 'comment',
-        user: 'Sarah Dev',
-        text: 'The handleSave function will be recreated on every render.',
-        category: 'optimization',
-        time: 'just now'
-      }]);
-    }, 15000);
-    return () => clearTimeout(timer);
-  }, []);
-
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!comment.trim()) return;
+    if (!comment.trim() || !user || !id) return;
 
-    setEvents(prev => [...prev, {
-      id: Date.now(),
-      type: 'comment',
-      user: 'You',
-      text: comment,
-      category,
-      time: 'just now',
-      isCurrentUser: true
-    }]);
-    setComment('');
+    try {
+      const { error } = await supabase
+        .from('reviews')
+        .insert([{
+          challenge_id: id,
+          reviewer_id: user.id,
+          text: comment,
+          category: category
+        }]);
+
+      if (error) throw error;
+      setComment('');
+    } catch (error) {
+      console.error("Error submitting review:", error);
+      alert("Failed to submit review.");
+    }
   };
 
   const getCategoryColor = (cat) => {
@@ -109,7 +160,7 @@ export default function ReviewRoom() {
           <Link to="/" style={{ color: 'var(--text-muted)', textDecoration: 'none' }} className="flex-center">
             <ArrowLeft size={20} />
           </Link>
-          <h2 style={{ fontSize: '1.5rem' }}>Reviewing: UserProfile Component</h2>
+          <h2 style={{ fontSize: '1.5rem' }}>Reviewing: {challenge ? challenge.title : 'Loading...'}</h2>
           <span style={{
             background: 'rgba(236, 72, 153, 0.1)',
             color: 'var(--secondary)',
@@ -118,7 +169,7 @@ export default function ReviewRoom() {
             fontSize: '0.875rem',
             fontWeight: 600
           }}>
-            3 Active Reviewers
+            {challenge ? challenge.active_reviewers : 0} Active Reviewers
           </span>
         </div>
 
@@ -154,7 +205,7 @@ export default function ReviewRoom() {
             </div>
           )}
 
-          <CodeBlock code={SAMPLE_CODE} language="jsx" />
+          <CodeBlock code={challenge ? challenge.code_preview : 'Loading code...'} language={challenge ? challenge.language.toLowerCase() : 'javascript'} />
         </div>
 
         <div className="glass-panel" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -193,25 +244,54 @@ export default function ReviewRoom() {
                       borderRadius: 'var(--radius-md)',
                       borderTopRightRadius: event.isCurrentUser ? 0 : 'var(--radius-md)',
                       borderTopLeftRadius: !event.isCurrentUser ? 0 : 'var(--radius-md)',
-                      border: `1px solid ${event.isCurrentUser ? 'var(--primary)' : 'var(--border-color)'}`,
-                      maxWidth: '90%'
+                      border: `1px solid ${event.isAccepted ? 'var(--success)' : event.isCurrentUser ? 'var(--primary)' : 'var(--border-color)'}`,
+                      maxWidth: '90%',
+                      boxShadow: event.isAccepted ? '0 0 10px rgba(16, 185, 129, 0.3)' : 'none'
                     }}>
-                      <div style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '0.25rem',
-                        fontSize: '0.7rem',
-                        padding: '0.15rem 0.4rem',
-                        borderRadius: '4px',
-                        background: `var(--${event.category === 'bug' ? 'danger' : event.category === 'optimization' ? 'warning' : 'success'})`,
-                        color: '#000',
-                        fontWeight: 700,
-                        textTransform: 'uppercase',
-                        marginBottom: '0.5rem'
-                      }}>
-                        {getCategoryIcon(event.category)} {event.category}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
+                        <div style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '0.25rem',
+                          fontSize: '0.7rem',
+                          padding: '0.15rem 0.4rem',
+                          borderRadius: '4px',
+                          background: `var(--${event.category === 'bug' ? 'danger' : event.category === 'optimization' ? 'warning' : 'success'})`,
+                          color: '#000',
+                          fontWeight: 700,
+                          textTransform: 'uppercase'
+                        }}>
+                          {getCategoryIcon(event.category)} {event.category}
+                        </div>
+                        {event.isAccepted && (
+                          <div style={{ color: 'var(--success)', display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.75rem', fontWeight: 600 }}>
+                            <CheckCircle size={14} /> Accepted
+                          </div>
+                        )}
                       </div>
-                      <p style={{ fontSize: '0.9rem' }}>{event.text}</p>
+                      <p style={{ fontSize: '0.9rem', marginBottom: '0.5rem' }}>{event.text}</p>
+                      
+                      {challenge && user && challenge.author_id === user.id && !event.isAccepted && !event.isCurrentUser && (
+                        <button 
+                          onClick={() => handleAcceptReview(event.id)}
+                          style={{
+                            background: 'rgba(16, 185, 129, 0.1)',
+                            border: '1px solid var(--success)',
+                            color: 'var(--success)',
+                            padding: '0.25rem 0.75rem',
+                            borderRadius: '4px',
+                            fontSize: '0.75rem',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            marginTop: '0.5rem',
+                            transition: 'all 0.2s'
+                          }}
+                          onMouseEnter={(e) => e.target.style.background = 'var(--success)'}
+                          onMouseLeave={(e) => e.target.style.background = 'rgba(16, 185, 129, 0.1)'}
+                        >
+                          Accept Review
+                        </button>
+                      )}
                     </div>
                   </>
                 )}

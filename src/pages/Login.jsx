@@ -1,28 +1,15 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { UserPlus, Mail, Lock, User, Github, Check } from 'lucide-react';
+import { Mail, Lock, Github, LogIn } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
-const PREDEFINED_SKILLS = ['React', 'Node.js', 'Python', 'Java', 'SQL', 'UI/UX', 'TypeScript', 'Go'];
-
-export default function Register() {
+export default function Login() {
     const navigate = useNavigate();
-    const { signUp } = useAuth();
+    const { signIn } = useAuth();
     const [formData, setFormData] = useState({
-        username: '',
         email: '',
-        password: '',
-        confirmPassword: ''
+        password: ''
     });
-    const [selectedSkills, setSelectedSkills] = useState([]);
-
-    const toggleSkill = (skill) => {
-        if (selectedSkills.includes(skill)) {
-            setSelectedSkills(selectedSkills.filter(s => s !== skill));
-        } else {
-            setSelectedSkills([...selectedSkills, skill]);
-        }
-    };
 
     const handleChange = (e) => {
         setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -39,27 +26,16 @@ export default function Register() {
             alert("Please enter a valid email address!");
             return;
         }
-        if (formData.password !== formData.confirmPassword) {
-            alert("Passwords don't match!");
-            return;
-        }
         
         try {
-            const { error } = await signUp({
+            const { error } = await signIn({
                 email: formData.email,
-                password: formData.password,
-                options: {
-                    data: {
-                        username: formData.username,
-                        skills: selectedSkills
-                    }
-                }
+                password: formData.password
             });
             
             if (error) throw error;
             
-            alert("Registration successful! Please verify your email.");
-            navigate('/login');
+            navigate('/');
         } catch (error) {
             alert(error.message);
         }
@@ -104,41 +80,13 @@ export default function Register() {
                         borderRadius: '50%',
                         border: '1px solid rgba(255,255,255,0.1)'
                     }}>
-                        <UserPlus size={32} color="var(--primary)" />
+                        <LogIn size={32} color="var(--primary)" />
                     </div>
-                    <h2 style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>Join the Arena</h2>
-                    <p style={{ color: 'var(--text-muted)' }}>Create an account to start reviewing code and earning points.</p>
+                    <h2 style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>Welcome Back</h2>
+                    <p style={{ color: 'var(--text-muted)' }}>Log in to access your profile and review challenges.</p>
                 </div>
 
                 <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', zIndex: 1 }}>
-
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                        <label style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>Username</label>
-                        <div style={{ position: 'relative' }}>
-                            <User size={18} style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-                            <input
-                                type="text"
-                                name="username"
-                                value={formData.username}
-                                onChange={handleChange}
-                                placeholder="developer2024"
-                                required
-                                style={{
-                                    width: '100%',
-                                    background: 'rgba(0,0,0,0.2)',
-                                    border: '1px solid var(--border-color)',
-                                    color: 'white',
-                                    padding: '0.75rem 1rem 0.75rem 2.75rem',
-                                    borderRadius: 'var(--radius-sm)',
-                                    fontFamily: 'inherit',
-                                    outline: 'none',
-                                    transition: 'border-color 0.2s ease'
-                                }}
-                                onFocus={(e) => e.target.style.borderColor = 'var(--primary)'}
-                                onBlur={(e) => e.target.style.borderColor = 'var(--border-color)'}
-                            />
-                        </div>
-                    </div>
 
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                         <label style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>Email Address</label>
@@ -196,69 +144,8 @@ export default function Register() {
                         </div>
                     </div>
 
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                        <label style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>Confirm Password</label>
-                        <div style={{ position: 'relative' }}>
-                            <Lock size={18} style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-                            <input
-                                type="password"
-                                name="confirmPassword"
-                                value={formData.confirmPassword}
-                                onChange={handleChange}
-                                placeholder="••••••••"
-                                required
-                                style={{
-                                    width: '100%',
-                                    background: 'rgba(0,0,0,0.2)',
-                                    border: '1px solid var(--border-color)',
-                                    color: 'white',
-                                    padding: '0.75rem 1rem 0.75rem 2.75rem',
-                                    borderRadius: 'var(--radius-sm)',
-                                    fontFamily: 'inherit',
-                                    outline: 'none',
-                                    transition: 'border-color 0.2s ease'
-                                }}
-                                onFocus={(e) => e.target.style.borderColor = 'var(--primary)'}
-                                onBlur={(e) => e.target.style.borderColor = 'var(--border-color)'}
-                            />
-                        </div>
-                    </div>
-
-                    {/* Skills Selection */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                        <label style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>Select Your Skills (Optional)</label>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-                            {PREDEFINED_SKILLS.map(skill => {
-                                const isSelected = selectedSkills.includes(skill);
-                                return (
-                                    <button
-                                        key={skill}
-                                        type="button"
-                                        onClick={() => toggleSkill(skill)}
-                                        style={{
-                                            padding: '0.5rem 0.75rem',
-                                            borderRadius: 'var(--radius-full)',
-                                            border: `1px solid ${isSelected ? 'var(--primary)' : 'var(--border-color)'}`,
-                                            background: isSelected ? 'rgba(99, 102, 241, 0.1)' : 'rgba(0,0,0,0.2)',
-                                            color: isSelected ? 'var(--primary)' : 'var(--text-muted)',
-                                            fontSize: '0.85rem',
-                                            cursor: 'pointer',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: '0.25rem',
-                                            transition: 'all 0.2s ease'
-                                        }}
-                                    >
-                                        {isSelected && <Check size={14} />}
-                                        {skill}
-                                    </button>
-                                );
-                            })}
-                        </div>
-                    </div>
-
                     <button type="submit" className="glass-button primary" style={{ width: '100%', padding: '1rem', fontSize: '1rem', marginTop: '0.5rem' }}>
-                        Create Account
+                        Log In
                     </button>
                 </form>
 
@@ -274,7 +161,7 @@ export default function Register() {
                     </button>
 
                     <p style={{ marginTop: '1.5rem', fontSize: '0.875rem', color: 'var(--text-muted)' }}>
-                        Already have an account? <Link to="/login" style={{ color: 'var(--primary)', textDecoration: 'none' }}>Log in</Link>
+                        Don't have an account? <Link to="/register" style={{ color: 'var(--primary)', textDecoration: 'none' }}>Register</Link>
                     </p>
                 </div>
 

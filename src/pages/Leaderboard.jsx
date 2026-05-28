@@ -1,20 +1,47 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Trophy, Medal, Star, Flame } from 'lucide-react';
-
-const LEADERBOARD_DATA = [
-    { rank: 1, name: 'Sarah Dev', points: 12500, language: 'React', trend: 'up' },
-    { rank: 2, name: 'Alex JS', points: 11200, language: 'JavaScript', trend: 'same' },
-    { rank: 3, name: 'BackendBob', points: 9800, language: 'Python', trend: 'up' },
-    { rank: 4, name: 'CodeNinja', points: 8450, language: 'TypeScript', trend: 'down' },
-    { rank: 5, name: 'CSSWizard', points: 7200, language: 'CSS', trend: 'same' },
-    { rank: 6, name: 'RustyDev', points: 6100, language: 'Rust', trend: 'up' },
-    { rank: 7, name: 'GopherGuy', points: 5800, language: 'Go', trend: 'up' },
-    { rank: 8, name: 'JavaGuru', points: 5500, language: 'Java', trend: 'up' },
-    { rank: 9, name: 'HtmlHacker', points: 4000, language: 'HTML', trend: 'same' },
-];
+import { supabase } from '../lib/supabase';
 
 export default function Leaderboard() {
     const [category, setCategory] = useState('Global');
+    const [leaderboardData, setLeaderboardData] = useState([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        async function fetchLeaderboard() {
+            setLoading(true);
+            try {
+                let query = supabase
+                    .from('profiles')
+                    .select('username, total_points, top_language')
+                    .order('total_points', { ascending: false })
+                    .limit(50);
+                
+                // Note: The UI has language categories, but for now we will just show global 
+                // since 'top_language' is mostly 'N/A' by default.
+                
+                const { data, error } = await query;
+                if (error) throw error;
+                
+                // Format the data
+                if (data) {
+                    const formatted = data.map((user, index) => ({
+                        rank: index + 1,
+                        name: user.username,
+                        points: user.total_points,
+                        language: user.top_language || 'N/A'
+                    }));
+                    setLeaderboardData(formatted);
+                }
+            } catch (error) {
+                console.error('Error fetching leaderboard:', error);
+            } finally {
+                setLoading(false);
+            }
+        }
+        
+        fetchLeaderboard();
+    }, [category]);
 
     return (
         <div className="animate-fade-in" style={{ maxWidth: '800px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '2rem' }}>
@@ -52,13 +79,21 @@ export default function Leaderboard() {
             </div>
 
             {/* Leaderboard List */}
-            <div className="glass-panel" style={{ padding: '0.5rem' }}>
-                {LEADERBOARD_DATA.map((user, index) => (
+            <div className="glass-panel" style={{ padding: '0.5rem', minHeight: '300px' }}>
+                {loading ? (
+                    <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                        Loading champions...
+                    </div>
+                ) : leaderboardData.length === 0 ? (
+                    <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                        No users found. Be the first to earn points!
+                    </div>
+                ) : leaderboardData.map((user, index) => (
                     <div key={user.name} style={{
                         display: 'flex',
                         alignItems: 'center',
                         padding: '1.25rem 1.5rem',
-                        borderBottom: index < LEADERBOARD_DATA.length - 1 ? '1px solid var(--border-color)' : 'none',
+                        borderBottom: index < leaderboardData.length - 1 ? '1px solid var(--border-color)' : 'none',
                         background: index === 0 ? 'rgba(245, 158, 11, 0.05)' : 'transparent',
                         transition: 'background 0.2s ease'
                     }}

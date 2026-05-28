@@ -1,9 +1,13 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Send, Code2, AlertCircle } from 'lucide-react';
+import { supabase } from '../lib/supabase';
+import { useAuth } from '../contexts/AuthContext';
 
 export default function SubmitChallenge() {
     const navigate = useNavigate();
+    const { user } = useAuth();
+    const [isSubmitting, setIsSubmitting] = useState(false);
     const [formData, setFormData] = useState({
         title: '',
         language: 'React',
@@ -17,12 +21,39 @@ export default function SubmitChallenge() {
         setFormData({ ...formData, [e.target.name]: e.target.value });
     };
 
-    const handleSubmit = (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
-        if (!formData.title || !formData.codePreview) return;
-        // In a real app, this would send an API request to save the challenge.
-        // For this prototype, we just navigate back to the dashboard.
-        navigate('/');
+        if (!formData.title || !formData.codePreview || !user) return;
+        
+        setIsSubmitting(true);
+        try {
+            // Process tags into an array
+            const tagsArray = formData.tags
+                ? formData.tags.split(',').map(tag => tag.trim()).filter(Boolean)
+                : [];
+
+            const { error } = await supabase
+                .from('challenges')
+                .insert([
+                    {
+                        author_id: user.id,
+                        title: formData.title,
+                        language: formData.language,
+                        difficulty: formData.difficulty,
+                        points: parseInt(formData.points),
+                        tags: tagsArray,
+                        code_preview: formData.codePreview
+                    }
+                ]);
+
+            if (error) throw error;
+            
+            navigate('/');
+        } catch (error) {
+            console.error("Error submitting challenge:", error);
+            alert("Failed to submit challenge. See console for details.");
+            setIsSubmitting(false);
+        }
     };
 
     return (
@@ -199,8 +230,8 @@ export default function SubmitChallenge() {
 
                 {/* Submit Button */}
                 <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1rem' }}>
-                    <button type="submit" className="glass-button primary" style={{ padding: '0.75rem 2rem', fontSize: '1.05rem' }}>
-                        <Send size={18} /> Publish Challenge
+                    <button type="submit" disabled={isSubmitting} className="glass-button primary" style={{ padding: '0.75rem 2rem', fontSize: '1.05rem', opacity: isSubmitting ? 0.7 : 1 }}>
+                        <Send size={18} /> {isSubmitting ? 'Publishing...' : 'Publish Challenge'}
                     </button>
                 </div>
 
