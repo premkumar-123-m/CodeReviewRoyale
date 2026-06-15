@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Send, Code2, AlertCircle } from 'lucide-react';
-import { supabase } from '../lib/supabase';
+import { db } from '../lib/firebase';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { useAuth } from '../contexts/AuthContext';
 
 export default function SubmitChallenge() {
@@ -32,22 +33,17 @@ export default function SubmitChallenge() {
                 ? formData.tags.split(',').map(tag => tag.trim()).filter(Boolean)
                 : [];
 
-            const { error } = await supabase
-                .from('challenges')
-                .insert([
-                    {
-                        author_id: user.id,
-                        title: formData.title,
-                        language: formData.language,
-                        difficulty: formData.difficulty,
-                        points: parseInt(formData.points),
-                        tags: tagsArray,
-                        code_preview: formData.codePreview
-                    }
-                ]);
+            await addDoc(collection(db, 'challenges'), {
+                author_id: user.uid,
+                title: formData.title,
+                language: formData.language,
+                difficulty: formData.difficulty,
+                points: parseInt(formData.points),
+                tags: tagsArray,
+                code_preview: formData.codePreview,
+                created_at: serverTimestamp()
+            });
 
-            if (error) throw error;
-            
             navigate('/');
         } catch (error) {
             console.error("Error submitting challenge:", error);

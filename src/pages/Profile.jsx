@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 import { User as UserIcon, Trophy, Star, History, Code2, Award, Zap, ChevronRight, LogOut } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { supabase } from '../lib/supabase';
+import { db } from '../lib/firebase';
+import { doc, getDoc, collection, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
 
 export default function Profile() {
     const navigate = useNavigate();
@@ -15,18 +16,14 @@ export default function Profile() {
         async function getProfile() {
             if (!user) return;
             try {
-                const { data, error } = await supabase
-                    .from('profiles')
-                    .select('*')
-                    .eq('id', user.id)
-                    .single();
+                const docRef = doc(db, 'profiles', user.uid);
+                const docSnap = await getDoc(docRef);
+                const data = docSnap.exists() ? docSnap.data() : null;
                 
-                if (error) {
-                    console.error('Error fetching profile:', error);
-                } else if (data) {
-                    const joinDate = new Date(user.created_at || Date.now()).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+                if (data) {
+                    const joinDate = new Date(user.metadata?.creationTime || Date.now()).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
                     setProfileData({
-                        username: data.username || user?.user_metadata?.username || user?.email,
+                        username: data.username || user.email,
                         joinDate: `Joined ${joinDate}`,
                         totalPoints: data.total_points || 0,
                         rank: data.rank || 'Novice Reviewer',
@@ -39,25 +36,45 @@ export default function Profile() {
                 }
                 
                 // Fetch user's accepted reviews for Activity History
-                const { data: activityData } = await supabase
-                    .from('reviews')
-                    .select('*, challenges(title, points)')
-                    .eq('reviewer_id', user.id)
-                    .eq('is_accepted', true)
-                    .order('created_at', { ascending: false })
-                    .limit(5);
-
-                if (activityData) {
-                    const formattedActivity = activityData.map(r => ({
-                        id: r.id,
+                const q = query(
+                    collection(db, 'reviews'),
+                    where('reviewer_id', '==', user.uid),
+                    where('is_accepted', '==', true),
+                    orderBy('created_at', 'desc'),
+                    limit(5)
+                );
+                
+                const querySnapshot = await getDocs(q);
+                const formattedActivity = [];
+                for (const reviewDoc of querySnapshot.docs) {
+                    const r = reviewDoc.data();
+                    let challengeTitle = 'Unknown Challenge';
+                    let challengePoints = 0;
+                    
+                    if (r.challenge_id) {
+                        const cSnap = await getDoc(doc(db, 'challenges', r.challenge_id));
+                        if (cSnap.exists()) {
+                            challengeTitle = cSnap.data().title;
+                            challengePoints = cSnap.data().points;
+                        }
+                    }
+                    
+                    let dateStr = new Date().toLocaleDateString();
+                    if (r.created_at) {
+                        const d = r.created_at.toDate ? r.created_at.toDate() : new Date();
+                        dateStr = d.toLocaleDateString();
+                    }
+                    
+                    formattedActivity.push({
+                        id: reviewDoc.id,
                         action: r.category === 'bug' ? 'Found Bug' : r.category === 'optimization' ? 'Suggested Optimization' : 'Improved Code',
-                        challenge: r.challenges?.title || 'Unknown Challenge',
-                        points: `+${r.challenges?.points || 0}`,
-                        time: new Date(r.created_at).toLocaleDateString(),
+                        challenge: challengeTitle,
+                        points: `+${challengePoints}`,
+                        time: dateStr,
                         type: r.category
-                    }));
-                    setRecentActivity(formattedActivity);
+                    });
                 }
+                setRecentActivity(formattedActivity);
 
             } catch (err) {
                 console.error('Unexpected error fetching profile', err);

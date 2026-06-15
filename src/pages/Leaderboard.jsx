@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Trophy, Medal, Star, Flame } from 'lucide-react';
-import { supabase } from '../lib/supabase';
+import { db } from '../lib/firebase';
+import { collection, query, orderBy, limit, getDocs } from 'firebase/firestore';
 
 export default function Leaderboard() {
     const [category, setCategory] = useState('Global');
@@ -11,28 +12,27 @@ export default function Leaderboard() {
         async function fetchLeaderboard() {
             setLoading(true);
             try {
-                let query = supabase
-                    .from('profiles')
-                    .select('username, total_points, top_language')
-                    .order('total_points', { ascending: false })
-                    .limit(50);
+                const q = query(
+                    collection(db, 'profiles'),
+                    orderBy('total_points', 'desc'),
+                    limit(50)
+                );
                 
-                // Note: The UI has language categories, but for now we will just show global 
-                // since 'top_language' is mostly 'N/A' by default.
+                const querySnapshot = await getDocs(q);
                 
-                const { data, error } = await query;
-                if (error) throw error;
-                
-                // Format the data
-                if (data) {
-                    const formatted = data.map((user, index) => ({
-                        rank: index + 1,
-                        name: user.username,
-                        points: user.total_points,
+                const formatted = [];
+                let rank = 1;
+                querySnapshot.forEach((doc) => {
+                    const user = doc.data();
+                    formatted.push({
+                        rank: rank++,
+                        name: user.username || 'Unknown',
+                        points: user.total_points || 0,
                         language: user.top_language || 'N/A'
-                    }));
-                    setLeaderboardData(formatted);
-                }
+                    });
+                });
+                
+                setLeaderboardData(formatted);
             } catch (error) {
                 console.error('Error fetching leaderboard:', error);
             } finally {

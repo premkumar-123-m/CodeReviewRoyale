@@ -2,7 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Send, Sparkles, MessageSquare, AlertTriangle, CheckCircle, ArrowLeft } from 'lucide-react';
 import CodeBlock from '../components/CodeBlock';
-import { supabase } from '../lib/supabase';
+import { db } from '../lib/firebase';
+import { doc, getDoc, collection, query, where, orderBy, onSnapshot, addDoc, updateDoc, serverTimestamp, increment } from 'firebase/firestore';
 import { useAuth } from '../contexts/AuthContext';
 
 export default function ReviewRoom() {
@@ -15,94 +16,86 @@ export default function ReviewRoom() {
   const [showAiHint, setShowAiHint] = useState(false);
   const feedEndRef = useRef(null);
 
-  // Fetch challenge and initial reviews
   useEffect(() => {
-    async function fetchData() {
-      // Fetch challenge
-      const { data: challengeData } = await supabase
-        .from('challenges')
-        .select('*, profiles(username)')
-        .eq('id', id)
-        .single();
-      
-      if (challengeData) setChallenge(challengeData);
-
-      // Fetch reviews
-      const { data: reviewsData } = await supabase
-        .from('reviews')
-        .select('*, profiles(username)')
-        .eq('challenge_id', id)
-        .order('created_at', { ascending: true });
-
-      if (reviewsData) {
-        const formattedEvents = reviewsData.map(r => ({
-          id: r.id,
-          type: 'comment',
-          user: r.profiles?.username || 'Unknown',
-          text: r.text,
-          category: r.category,
-          time: new Date(r.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          isCurrentUser: user ? r.reviewer_id === user.id : false,
-          isAccepted: r.is_accepted
-        }));
-        setEvents(formattedEvents);
+    async function fetchChallenge() {
+      if (!id) return;
+      const challengeRef = doc(db, 'challenges', id);
+      const challengeSnap = await getDoc(challengeRef);
+      if (challengeSnap.exists()) {
+        const cData = challengeSnap.data();
+        // Also fetch author profile if we needed username
+        setChallenge({ id: challengeSnap.id, ...cData });
       }
     }
-    
-    if (id) fetchData();
-  }, [id, user]);
+    fetchChallenge();
+  }, [id]);
 
-  // Set up real-time subscription for new reviews
   useEffect(() => {
     if (!id) return;
     
-    const channel = supabase
-      .channel(`room_${id}`)
-      .on('postgres_changes', {
-        event: '*',
-        schema: 'public',
-        table: 'reviews',
-        filter: `challenge_id=eq.${id}`
-      }, async (payload) => {
-        if (payload.eventType === 'INSERT') {
-          const { data: profile } = await supabase
-            .from('profiles')
-            .select('username')
-            .eq('id', payload.new.reviewer_id)
-            .single();
-            
-          const newEvent = {
-            id: payload.new.id,
-            type: 'comment',
-            user: profile?.username || 'Unknown',
-            text: payload.new.text,
-            category: payload.new.category,
-            time: new Date(payload.new.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            isCurrentUser: user ? payload.new.reviewer_id === user.id : false,
-            isAccepted: payload.new.is_accepted
-          };
-          
-          setEvents(prev => [...prev, newEvent]);
-        } else if (payload.eventType === 'UPDATE') {
-          setEvents(prev => prev.map(event => 
-            event.id === payload.new.id ? { ...event, isAccepted: payload.new.is_accepted } : event
-          ));
-        }
-      })
-      .subscribe();
+    const q = query(
+      collection(db, 'reviews'),
+      where('challenge_id', '==', id),
+      orderBy('created_at', 'asc')
+    );
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    const unsubscribe = onSnapshot(q, async (snapshot) => {
+      const newEvents = [];
+      for (const docSnap of snapshot.docs) {
+        const r = docSnap.data();
+        let username = 'Unknown';
+        
+        // Fetch reviewer profile
+        if (r.reviewer_id) {
+          const profileSnap = await getDoc(doc(db, 'profiles', r.reviewer_id));
+          if (profileSnap.exists()) {
+            username = profileSnap.data().username || 'Unknown';
+          }
+        }
+        
+        let timeString = '';
+        if (r.created_at) {
+          // r.created_at could be a Firebase Timestamp
+          const date = r.created_at.toDate ? r.created_at.toDate() : new Date();
+          timeString = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        }
+        
+        newEvents.push({
+          id: docSnap.id,
+          type: 'comment',
+          user: username,
+          reviewer_id: r.reviewer_id,
+          text: r.text,
+          category: r.category,
+          time: timeString,
+          isCurrentUser: user ? r.reviewer_id === user.uid : false,
+          isAccepted: r.is_accepted || false
+        });
+      }
+      setEvents(newEvents);
+    });
+
+    return () => unsubscribe();
   }, [id, user]);
 
-  const handleAcceptReview = async (reviewId) => {
+  const handleAcceptReview = async (reviewId, reviewerId, category) => {
     try {
-      const { error } = await supabase
-        .from('reviews')
-        .update({ is_accepted: true })
-        .eq('id', reviewId);
-      if (error) throw error;
+      // 1. Update the review to accepted
+      await updateDoc(doc(db, 'reviews', reviewId), {
+        is_accepted: true
+      });
+      
+      // 2. Client-side trigger logic: Award points to the reviewer
+      if (reviewerId && challenge) {
+        const challengePoints = challenge.points || 0;
+        
+        await updateDoc(doc(db, 'profiles', reviewerId), {
+          total_points: increment(challengePoints),
+          reviews_completed: increment(1),
+          bugs_found: increment(category === 'bug' ? 1 : 0),
+          optimizations_suggested: increment(category === 'optimization' ? 1 : 0)
+        });
+      }
     } catch (err) {
       console.error("Error accepting review:", err);
       alert("Failed to accept review.");
@@ -118,16 +111,15 @@ export default function ReviewRoom() {
     if (!comment.trim() || !user || !id) return;
 
     try {
-      const { error } = await supabase
-        .from('reviews')
-        .insert([{
-          challenge_id: id,
-          reviewer_id: user.id,
-          text: comment,
-          category: category
-        }]);
+      await addDoc(collection(db, 'reviews'), {
+        challenge_id: id,
+        reviewer_id: user.uid,
+        text: comment,
+        category: category,
+        is_accepted: false,
+        created_at: serverTimestamp()
+      });
 
-      if (error) throw error;
       setComment('');
     } catch (error) {
       console.error("Error submitting review:", error);
@@ -271,9 +263,9 @@ export default function ReviewRoom() {
                       </div>
                       <p style={{ fontSize: '0.9rem', marginBottom: '0.5rem' }}>{event.text}</p>
                       
-                      {challenge && user && challenge.author_id === user.id && !event.isAccepted && !event.isCurrentUser && (
+                      {challenge && user && challenge.author_id === user.uid && !event.isAccepted && !event.isCurrentUser && (
                         <button 
-                          onClick={() => handleAcceptReview(event.id)}
+                          onClick={() => handleAcceptReview(event.id, event.reviewer_id, event.category)}
                           style={{
                             background: 'rgba(16, 185, 129, 0.1)',
                             border: '1px solid var(--success)',

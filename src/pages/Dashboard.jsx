@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Code2, Clock, Users, ArrowRight, Zap } from 'lucide-react';
-import { supabase } from '../lib/supabase';
+import { db } from '../lib/firebase';
+import { collection, query, orderBy, getDocs, doc, getDoc } from 'firebase/firestore';
 
 export default function Dashboard() {
     const [filter, setFilter] = useState('All');
@@ -12,28 +13,36 @@ export default function Dashboard() {
     useEffect(() => {
         async function fetchChallenges() {
             try {
-                const { data, error } = await supabase
-                    .from('challenges')
-                    .select('*, profiles(username)')
-                    .order('created_at', { ascending: false });
+                const q = query(collection(db, 'challenges'), orderBy('created_at', 'desc'));
+                const querySnapshot = await getDocs(q);
+                
+                const challengesData = [];
+                for (const document of querySnapshot.docs) {
+                    const c = document.data();
+                    let authorName = 'Unknown User';
+                    
+                    if (c.author_id) {
+                        const profileRef = doc(db, 'profiles', c.author_id);
+                        const profileSnap = await getDoc(profileRef);
+                        if (profileSnap.exists()) {
+                            authorName = profileSnap.data().username || 'Unknown User';
+                        }
+                    }
 
-                if (error) {
-                    console.error('Error fetching challenges:', error);
-                } else if (data) {
-                    const formatted = data.map(c => ({
-                        id: c.id,
+                    challengesData.push({
+                        id: document.id,
                         title: c.title,
                         language: c.language,
-                        author: c.profiles?.username || 'Unknown User',
+                        author: authorName,
                         difficulty: c.difficulty,
                         points: c.points,
-                        activeReviewers: c.active_reviewers,
-                        timeLeft: c.time_left,
+                        activeReviewers: c.active_reviewers || 0,
+                        timeLeft: c.time_left || '24h',
                         tags: c.tags || [],
                         codePreview: c.code_preview
-                    }));
-                    setChallenges(formatted);
+                    });
                 }
+                setChallenges(challengesData);
             } catch (err) {
                 console.error('Unexpected error:', err);
             } finally {

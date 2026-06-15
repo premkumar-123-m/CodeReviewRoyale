@@ -5,7 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 
 export default function Login() {
     const navigate = useNavigate();
-    const { signIn } = useAuth();
+    const { signIn, signInWithGithub } = useAuth();
     const [formData, setFormData] = useState({
         email: '',
         password: ''
@@ -35,6 +35,16 @@ export default function Login() {
             
             if (error) throw error;
             
+            navigate('/');
+        } catch (error) {
+            alert(error.message);
+        }
+    };
+
+    const handleGithubLogin = async () => {
+        try {
+            const { error } = await signInWithGithub();
+            if (error) throw error;
             navigate('/');
         } catch (error) {
             alert(error.message);
@@ -156,7 +166,7 @@ export default function Login() {
                         <div style={{ flex: 1, height: '1px', background: 'var(--border-color)' }} />
                     </div>
 
-                    <button onClick={() => navigate('/')} className="glass-button" style={{ width: '100%', display: 'flex', justifyContent: 'center', gap: '0.75rem', padding: '0.75rem' }}>
+                    <button type="button" onClick={handleGithubLogin} className="glass-button" style={{ width: '100%', display: 'flex', justifyContent: 'center', gap: '0.75rem', padding: '0.75rem' }}>
                         <Github size={20} /> GitHub
                     </button>
 

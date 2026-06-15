@@ -7,7 +7,7 @@ const PREDEFINED_SKILLS = ['React', 'Node.js', 'Python', 'Java', 'SQL', 'UI/UX',
 
 export default function Register() {
     const navigate = useNavigate();
-    const { signUp } = useAuth();
+    const { signUp, signInWithGithub } = useAuth();
     const [formData, setFormData] = useState({
         username: '',
         email: '',
@@ -60,6 +60,16 @@ export default function Register() {
             
             alert("Registration successful! Please verify your email.");
             navigate('/login');
+        } catch (error) {
+            alert(error.message);
+        }
+    };
+
+    const handleGithubLogin = async () => {
+        try {
+            const { error } = await signInWithGithub();
+            if (error) throw error;
+            navigate('/');
         } catch (error) {
             alert(error.message);
         }
@@ -269,7 +279,7 @@ export default function Register() {
                         <div style={{ flex: 1, height: '1px', background: 'var(--border-color)' }} />
                     </div>
 
-                    <button onClick={() => navigate('/')} className="glass-button" style={{ width: '100%', display: 'flex', justifyContent: 'center', gap: '0.75rem', padding: '0.75rem' }}>
+                    <button type="button" onClick={handleGithubLogin} className="glass-button" style={{ width: '100%', display: 'flex', justifyContent: 'center', gap: '0.75rem', padding: '0.75rem' }}>
                         <Github size={20} /> GitHub
                     </button>
 
